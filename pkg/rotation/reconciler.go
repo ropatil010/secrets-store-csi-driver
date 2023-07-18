@@ -51,7 +51,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"monis.app/mlog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -67,6 +66,7 @@ const (
 // Reconciler reconciles and rotates contents in the pod
 // and Kubernetes secrets periodically
 type Reconciler struct {
+	providerVolumePath   string
 	rotationPollInterval time.Duration
 	providerClients      *secretsstore.PluginClientBuilder
 	queue                workqueue.RateLimitingInterface
@@ -89,6 +89,7 @@ type Reconciler struct {
 // NewReconciler returns a new reconciler for rotation
 func NewReconciler(client client.Reader,
 	s *runtime.Scheme,
+	providerVolumePath, nodeName string,
 	rotationPollInterval time.Duration,
 	providerClients *secretsstore.PluginClientBuilder,
 	tokenClient *k8s.TokenClient) (*Reconciler, error) {
@@ -108,6 +109,7 @@ func NewReconciler(client client.Reader,
 	}
 
 	return &Reconciler{
+		providerVolumePath:   providerVolumePath,
 		rotationPollInterval: rotationPollInterval,
 		providerClients:      providerClients,
 		reporter:             newStatsReporter(),
@@ -124,12 +126,6 @@ func NewReconciler(client client.Reader,
 
 // Run starts the rotation reconciler
 func (r *Reconciler) Run(stopCh <-chan struct{}) {
-	if err := r.runErr(stopCh); err != nil {
-		mlog.Fatal(err)
-	}
-}
-
-func (r *Reconciler) runErr(stopCh <-chan struct{}) error {
 	defer r.queue.ShutDown()
 	klog.InfoS("starting rotation reconciler", "rotationPollInterval", r.rotationPollInterval)
 
@@ -138,7 +134,7 @@ func (r *Reconciler) runErr(stopCh <-chan struct{}) error {
 
 	if err := r.secretStore.Run(stopCh); err != nil {
 		klog.ErrorS(err, "failed to run informers for rotation reconciler")
-		return err
+		os.Exit(1)
 	}
 
 	// TODO (aramase) consider adding more workers to process reconcile concurrently
@@ -149,7 +145,7 @@ func (r *Reconciler) runErr(stopCh <-chan struct{}) error {
 	for {
 		select {
 		case <-stopCh:
-			return nil
+			return
 		case <-ticker.C:
 			// The spc pod status informer is configured to do a filtered list watch of spc pod statuses
 			// labeled for the same node as the driver. LIST will only return the filtered results.
@@ -171,7 +167,6 @@ func (r *Reconciler) runErr(stopCh <-chan struct{}) error {
 
 // runWorker runs a thread that process the queue
 func (r *Reconciler) runWorker() {
-	// nolint
 	for r.processNextItem() {
 
 	}
@@ -304,7 +299,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	}
 	if fileutil.GetVolumeNameFromTargetPath(spcps.Status.TargetPath) != podVol.Name {
 		errorReason = internalerrors.UnexpectedTargetPath
-		return fmt.Errorf("secret provider class pod status(spcps) volume name does not match the volume name in the pod %s/%s", pod.Namespace, pod.Name)
+		return fmt.Errorf("could not find secret provider class pod status volume for pod %s/%s", pod.Namespace, pod.Name)
 	}
 
 	parameters := make(map[string]string)

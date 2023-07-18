@@ -38,14 +38,14 @@ type SecretsStore struct {
 	ids *identityServer
 }
 
-func NewSecretsStoreDriver(driverName, nodeID, endpoint string,
+func NewSecretsStoreDriver(driverName, nodeID, endpoint, providerVolumePath string,
 	providerClients *PluginClientBuilder,
 	client client.Client,
 	reader client.Reader,
 	tokenClient *k8s.TokenClient) *SecretsStore {
 	klog.InfoS("Initializing Secrets Store CSI Driver", "driver", driverName, "version", version.BuildVersion, "buildTime", version.BuildTime)
 
-	ns, err := newNodeServer(nodeID, mount.New(""), providerClients, client, reader, NewStatsReporter(), tokenClient)
+	ns, err := newNodeServer(providerVolumePath, nodeID, mount.New(""), providerClients, client, reader, NewStatsReporter(), tokenClient)
 	if err != nil {
 		klog.ErrorS(err, "failed to initialize node server")
 		os.Exit(1)
@@ -59,7 +59,7 @@ func NewSecretsStoreDriver(driverName, nodeID, endpoint string,
 	}
 }
 
-func newNodeServer(nodeID string,
+func newNodeServer(providerVolumePath, nodeID string,
 	mounter mount.Interface,
 	providerClients *PluginClientBuilder,
 	client client.Client,
@@ -67,13 +67,14 @@ func newNodeServer(nodeID string,
 	statsReporter StatsReporter,
 	tokenClient *k8s.TokenClient) (*nodeServer, error) {
 	return &nodeServer{
-		mounter:         mounter,
-		reporter:        statsReporter,
-		nodeID:          nodeID,
-		client:          client,
-		reader:          reader,
-		providerClients: providerClients,
-		tokenClient:     tokenClient,
+		providerVolumePath: providerVolumePath,
+		mounter:            mounter,
+		reporter:           statsReporter,
+		nodeID:             nodeID,
+		client:             client,
+		reader:             reader,
+		providerClients:    providerClients,
+		tokenClient:        tokenClient,
 	}, nil
 }
 

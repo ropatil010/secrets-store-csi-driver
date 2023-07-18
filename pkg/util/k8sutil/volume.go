@@ -25,8 +25,7 @@ import (
 // SPCVolume finds the Secret Provider Class volume from a Pod, or returns nil
 // if a volume could not be found.
 func SPCVolume(pod *corev1.Pod, spcName string) *corev1.Volume {
-	for idx := range pod.Spec.Volumes {
-		vol := &pod.Spec.Volumes[idx]
+	for i, vol := range pod.Spec.Volumes {
 		if vol.CSI == nil {
 			continue
 		}
@@ -36,7 +35,7 @@ func SPCVolume(pod *corev1.Pod, spcName string) *corev1.Volume {
 		if vol.CSI.VolumeAttributes["secretProviderClass"] != spcName {
 			continue
 		}
-		return vol
+		return &pod.Spec.Volumes[i]
 	}
 	return nil
 }

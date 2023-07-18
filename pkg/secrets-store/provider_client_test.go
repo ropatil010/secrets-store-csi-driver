@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"sigs.k8s.io/secrets-store-csi-driver/pkg/test_utils/tmpdir"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/fileutil"
 	"sigs.k8s.io/secrets-store-csi-driver/provider/fake"
 	"sigs.k8s.io/secrets-store-csi-driver/provider/v1alpha1"
@@ -174,8 +175,8 @@ func TestMountContent(t *testing.T) {
 			if test.skipon == runtime.GOOS {
 				t.SkipNow()
 			}
-			socketPath := t.TempDir()
-			targetPath := t.TempDir()
+			socketPath := tmpdir.New(t, "", "ut")
+			targetPath := tmpdir.New(t, "", "ut")
 
 			pool := NewPluginClientBuilder([]string{socketPath})
 			defer pool.Cleanup()
@@ -225,8 +226,8 @@ func TestMountContent(t *testing.T) {
 }
 
 func TestMountContent_TooLarge(t *testing.T) {
-	socketPath := t.TempDir()
-	targetPath := t.TempDir()
+	socketPath := tmpdir.New(t, "", "ut")
+	targetPath := tmpdir.New(t, "", "ut")
 
 	// set a very small max message size
 	pool := NewPluginClientBuilder([]string{socketPath}, grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(5)))
@@ -325,7 +326,7 @@ func TestMountContentError(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			socketPath := t.TempDir()
+			socketPath := tmpdir.New(t, "", "ut")
 
 			pool := NewPluginClientBuilder([]string{socketPath})
 			defer pool.Cleanup()
@@ -362,7 +363,7 @@ func TestMountContentError(t *testing.T) {
 }
 
 func TestPluginClientBuilder(t *testing.T) {
-	path := t.TempDir()
+	path := tmpdir.New(t, "", "ut")
 
 	cb := NewPluginClientBuilder([]string{path})
 	ctx := context.Background()
@@ -392,8 +393,8 @@ func TestPluginClientBuilder(t *testing.T) {
 }
 
 func TestPluginClientBuilderMultiPath(t *testing.T) {
-	emptyPath := t.TempDir()
-	path := t.TempDir()
+	emptyPath := tmpdir.New(t, "", "ut")
+	path := tmpdir.New(t, "", "ut")
 
 	// Ensure that if the path containing the listening socket is not the first
 	// path checked that the operation still succeeds.
@@ -425,7 +426,7 @@ func TestPluginClientBuilderMultiPath(t *testing.T) {
 }
 
 func TestPluginClientBuilder_ConcurrentGet(t *testing.T) {
-	path := t.TempDir()
+	path := tmpdir.New(t, "", "ut")
 
 	cb := NewPluginClientBuilder([]string{path})
 	ctx := context.Background()
@@ -453,13 +454,13 @@ func TestPluginClientBuilder_ConcurrentGet(t *testing.T) {
 }
 
 func TestPluginClientBuilderErrorNotFound(t *testing.T) {
-	path := t.TempDir()
+	path := tmpdir.New(t, "", "ut")
 
 	cb := NewPluginClientBuilder([]string{path})
 	ctx := context.Background()
 
-	if _, err := cb.Get(ctx, "notfoundprovider"); !errors.Is(err, errProviderNotFound) {
-		t.Errorf("Get(%s) = %v, want %v", "notfoundprovider", err, errProviderNotFound)
+	if _, err := cb.Get(ctx, "notfoundprovider"); !errors.Is(err, ErrProviderNotFound) {
+		t.Errorf("Get(%s) = %v, want %v", "notfoundprovider", err, ErrProviderNotFound)
 	}
 
 	// check that the provider is found once server is started
@@ -475,13 +476,13 @@ func TestPluginClientBuilderErrorNotFound(t *testing.T) {
 }
 
 func TestPluginClientBuilderErrorInvalid(t *testing.T) {
-	path := t.TempDir()
+	path := tmpdir.New(t, "", "ut")
 
 	cb := NewPluginClientBuilder([]string{path})
 	ctx := context.Background()
 
-	if _, err := cb.Get(ctx, "bad/provider/name"); !errors.Is(err, errInvalidProvider) {
-		t.Errorf("Get(%s) = %v, want %v", "bad/provider/name", err, errInvalidProvider)
+	if _, err := cb.Get(ctx, "bad/provider/name"); !errors.Is(err, ErrInvalidProvider) {
+		t.Errorf("Get(%s) = %v, want %v", "bad/provider/name", err, ErrInvalidProvider)
 	}
 }
 
@@ -498,7 +499,7 @@ func TestVersion(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			socketPath := t.TempDir()
+			socketPath := tmpdir.New(t, "", "ut")
 
 			pool := NewPluginClientBuilder([]string{socketPath})
 			defer pool.Cleanup()
@@ -529,7 +530,7 @@ func TestVersion(t *testing.T) {
 func TestPluginClientBuilder_HealthCheck(t *testing.T) {
 	// this test asserts the read lock and unlock semantics in the
 	// HealthCheck() method work as expected
-	path := t.TempDir()
+	path := tmpdir.New(t, "", "ut")
 
 	cb := NewPluginClientBuilder([]string{path})
 	ctx := context.Background()

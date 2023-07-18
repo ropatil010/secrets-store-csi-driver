@@ -1,19 +1,9 @@
 run:
   timeout: 5m
-  go: "1.20"
+  go: '1.19'
+  skip-dirs: []
   skip-files:
   - "zz_generated.*\\.go$"
-
-linters-settings:
-  gocritic:
-    enabled-tags:
-    - performance
-  lll:
-    line-length: 200
-  misspell:
-    locale: US
-  staticcheck:
-    go: "1.20"
 
 linters:
   disable-all: true
@@ -24,7 +14,6 @@ linters:
     - errorlint
     - exhaustive
     - goconst
-    - gocritic
     - gocyclo
     - gofmt
     - goimports
@@ -40,17 +29,12 @@ linters:
     - stylecheck
     - typecheck
     - unused
-    - whitespace
   # Run with --fast=false for more extensive checks (enables all linters)
   fast: true
 
 issues:
   # default: 50
   max-issues-per-linter: 0
-  exclude-rules:
-    - text: "unused-parameter: parameter '.*' seems to be unused, consider removing or renaming it as _"
-      linters:
-        - revive
 
   # default: 3
   max-same-issues: 0

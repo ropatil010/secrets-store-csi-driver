@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"sigs.k8s.io/secrets-store-csi-driver/pkg/test_utils/tmpdir"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/runtimeutil"
 	"sigs.k8s.io/secrets-store-csi-driver/provider/v1alpha1"
 )
@@ -369,7 +370,7 @@ func TestWritePayloads(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := tmpdir.New(t, "", "ut")
 
 			// check that the first write succeeds and the contents match
 			if err := WritePayloads(dir, tc.first); err != nil {
@@ -403,7 +404,7 @@ func TestWritePayloads(t *testing.T) {
 }
 
 func TestWritePayloads_BackwardCompatible(t *testing.T) {
-	dir := t.TempDir()
+	dir := tmpdir.New(t, "", "ut")
 
 	// write a file simulating the provider-style file writing
 	path := filepath.Join(dir, "foo.txt")

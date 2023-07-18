@@ -62,13 +62,14 @@ func setupScheme() (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
-func newTestReconciler(client client.Reader, kubeClient kubernetes.Interface, crdClient *secretsStoreFakeClient.Clientset, rotationPollInterval time.Duration, socketPath string) (*Reconciler, error) {
+func newTestReconciler(client client.Reader, s *runtime.Scheme, kubeClient kubernetes.Interface, crdClient *secretsStoreFakeClient.Clientset, rotationPollInterval time.Duration, socketPath string) (*Reconciler, error) {
 	secretStore, err := k8s.New(kubeClient, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Reconciler{
+		providerVolumePath:   socketPath,
 		rotationPollInterval: rotationPollInterval,
 		providerClients:      secretsstore.NewPluginClientBuilder([]string{socketPath}),
 		queue:                workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
@@ -448,7 +449,7 @@ func TestReconcileError(t *testing.T) {
 			}
 			client := controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
 
-			testReconciler, err := newTestReconciler(client, kubeClient, crdClient, test.rotationPollInterval, test.socketPath)
+			testReconciler, err := newTestReconciler(client, scheme, kubeClient, crdClient, test.rotationPollInterval, test.socketPath)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			err = testReconciler.secretStore.Run(wait.NeverStop)
@@ -589,7 +590,7 @@ func TestReconcileNoError(t *testing.T) {
 		}
 		ctrlClient := controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
 
-		testReconciler, err := newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, socketPath)
+		testReconciler, err := newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, socketPath)
 		g.Expect(err).NotTo(HaveOccurred())
 		err = testReconciler.secretStore.Run(wait.NeverStop)
 		g.Expect(err).NotTo(HaveOccurred())
@@ -634,7 +635,7 @@ func TestReconcileNoError(t *testing.T) {
 			test.nodePublishSecretRefSecretToAdd,
 		}
 		ctrlClient = controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
-		testReconciler, err = newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, socketPath)
+		testReconciler, err = newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, socketPath)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -650,7 +651,7 @@ func TestReconcileNoError(t *testing.T) {
 			test.nodePublishSecretRefSecretToAdd,
 		}
 		ctrlClient = controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
-		testReconciler, err = newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, socketPath)
+		testReconciler, err = newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, socketPath)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -741,7 +742,7 @@ func TestPatchSecret(t *testing.T) {
 			}
 			ctrlClient := controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
 
-			testReconciler, err := newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, "")
+			testReconciler, err := newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, "")
 			g.Expect(err).NotTo(HaveOccurred())
 			err = testReconciler.secretStore.Run(wait.NeverStop)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -766,7 +767,7 @@ func TestPatchSecret(t *testing.T) {
 func TestHandleError(t *testing.T) {
 	g := NewWithT(t)
 
-	testReconciler, err := newTestReconciler(nil, nil, nil, 60*time.Second, "")
+	testReconciler, err := newTestReconciler(nil, nil, nil, nil, 60*time.Second, "")
 	g.Expect(err).NotTo(HaveOccurred())
 
 	testReconciler.handleError(errors.New("failed error"), "key1", false)

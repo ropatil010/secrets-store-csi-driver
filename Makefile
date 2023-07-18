@@ -29,8 +29,8 @@ E2E_PROVIDER_IMAGE_NAME ?= e2e-provider
 
 # Release version is the current supported release for the driver
 # Update this version when the helm chart is being updated for release
-RELEASE_VERSION := v1.3.3
-IMAGE_VERSION ?= v1.3.3
+RELEASE_VERSION := v1.3.4
+IMAGE_VERSION ?= v1.3.4
 
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
@@ -64,14 +64,14 @@ ALL_OS = linux windows
 ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
-ALL_OSVERSIONS.windows := 1809 ltsc2022
+ALL_OSVERSIONS.windows := 1809 1903 1909 2004 ltsc2022
 ALL_OS_ARCH.windows = $(foreach arch, $(ALL_ARCH.windows), $(foreach osversion, ${ALL_OSVERSIONS.windows}, windows-${osversion}-${arch}))
 ALL_OS_ARCH = $(foreach os, $(ALL_OS), ${ALL_OS_ARCH.${os}})
 
 # The current context of image building
 # The architecture of the image
 ARCH ?= amd64
-# OS Version for the Windows images: 1809, ltsc2022
+# OS Version for the Windows images: 1809, 1903, 1909, 2004, ltsc2022
 OSVERSION ?= 1809
 # Output type of docker buildx build
 OUTPUT_TYPE ?= registry
@@ -99,11 +99,11 @@ EKSCTL := eksctl
 YQ := yq
 
 # Test variables
-KIND_VERSION ?= 0.18.0
+KIND_VERSION ?= 0.15.0
 KUBERNETES_VERSION ?= 1.24.0
 KUBECTL_VERSION ?= 1.25.3
 BATS_VERSION ?= 1.4.1
-TRIVY_VERSION ?= 0.39.1
+TRIVY_VERSION ?= 0.29.1
 PROTOC_VERSION ?= 3.20.1
 SHELLCHECK_VER ?= v0.8.0
 YQ_VERSION ?= v4.11.2
@@ -142,12 +142,12 @@ validate-go: ## Validates the installed version of go.
 ## --------------------------------------
 
 .PHONY: test
-test: go-test
+test: lint go-test
 
 .PHONY: go-test # Run unit tests
 go-test:
-	go test -count=1 $(GO_FILES) -v -coverprofile cover.out
-	cd test/e2eprovider && go test ./... -tags e2e -count=1 -v
+	go test -count=1 -cover $(GO_FILES) -v
+	cd test/e2eprovider && go test ./... -tags e2e -count=1 -cover -v
 
 # skipping Controller tests as this driver only implements Node and Identity service.
 .PHONY: sanity-test # Run CSI sanity tests for the driver
@@ -161,7 +161,7 @@ image-scan: $(TRIVY)
 	$(TRIVY) image --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
 	# show vulnerabilities that have been fixed
 	$(TRIVY) image --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(IMAGE_TAG)
-	$(TRIVY) image --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
+	$(TRIVY) image --vuln-type os --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
 
 ## --------------------------------------
 ## Tooling Binaries
@@ -173,7 +173,7 @@ $(CONTROLLER_GEN): $(TOOLS_MOD_DIR)/go.mod $(TOOLS_MOD_DIR)/go.sum $(TOOLS_MOD_D
 
 $(GOLANGCI_LINT): ## Build golangci-lint from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -o $(TOOLS_BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
+		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
 
 $(KUSTOMIZE): ## Build kustomize from tools folder.
 	cd $(TOOLS_MOD_DIR) && \

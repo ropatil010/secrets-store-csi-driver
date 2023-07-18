@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/secrets-store-csi-driver/test/e2eprovider/server"
 
 	"k8s.io/klog/v2"
-	"monis.app/mlog"
 )
 
 var (
@@ -38,12 +37,6 @@ var (
 )
 
 func main() {
-	if err := mainErr(); err != nil {
-		mlog.Fatal(err)
-	}
-}
-
-func mainErr() error {
 	klog.InitFlags(nil)
 	defer klog.Flush()
 
@@ -55,18 +48,18 @@ func mainErr() error {
 	mockProviderServer, err := server.NewE2EProviderServer(*endpoint)
 	if err != nil {
 		klog.ErrorS(err, "failed to get new mock e2e provider server")
-		return err
+		os.Exit(1)
 	}
 
 	if err := os.Remove(mockProviderServer.GetSocketPath()); err != nil && !os.IsNotExist(err) {
 		klog.ErrorS(err, "failed to remove unix domain socket", "socketPath", mockProviderServer.GetSocketPath())
-		return err
+		os.Exit(1)
 	}
 
 	err = mockProviderServer.Start()
 	if err != nil {
 		klog.ErrorS(err, "failed to start mock e2e provider server")
-		return err
+		os.Exit(1)
 	}
 
 	// endpoint to enable rotation response.
@@ -90,5 +83,4 @@ func mainErr() error {
 	// gracefully stop the grpc server
 	klog.InfoS("terminating the e2e provider server")
 	mockProviderServer.Stop()
-	return nil
 }
