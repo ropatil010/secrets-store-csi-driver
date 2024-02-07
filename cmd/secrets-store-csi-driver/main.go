@@ -65,6 +65,7 @@ var (
 	enableProfile           = flag.Bool("enable-pprof", false, "enable pprof profiling")
 	profilePort             = flag.Int("pprof-port", 6065, "port for pprof profiling")
 	maxCallRecvMsgSize      = flag.Int("max-call-recv-msg-size", 1024*1024*4, "maximum size in bytes of gRPC response from plugins")
+	versionInfo             = flag.Bool("version", false, "Print the version and exit")
 
 	// Enable optional healthcheck for provider clients that exist in memory
 	providerHealthCheck         = flag.Bool("provider-health-check", false, "Enable health check for configured providers")
@@ -100,6 +101,10 @@ func mainErr() error {
 	if err := mlog.ValidateAndSetKlogLevelAndFormatGlobally(ctx, getKlogLevel(), format); err != nil {
 		mlog.Error("failed to validate log level", err)
 		return err
+	}
+
+	if *versionInfo {
+		return version.PrintVersion()
 	}
 
 	if *enableProfile {
@@ -163,7 +168,7 @@ func mainErr() error {
 		return err
 	}
 
-	reconciler, err := controllers.New(mgr, *nodeID)
+	reconciler, err := controllers.New(*driverName, mgr, *nodeID)
 	if err != nil {
 		klog.ErrorS(err, "failed to create secret provider class pod status reconciler")
 		return err
@@ -212,7 +217,7 @@ func mainErr() error {
 
 	// Secret rotation
 	if *enableSecretRotation {
-		rec, err := rotation.NewReconciler(mgr.GetCache(), scheme, *providerVolumePath, *nodeID, *rotationPollInterval, providerClients, tokenClient)
+		rec, err := rotation.NewReconciler(*driverName, mgr.GetCache(), scheme, *rotationPollInterval, providerClients, tokenClient)
 		if err != nil {
 			klog.ErrorS(err, "failed to initialize rotation reconciler")
 			return err
@@ -220,7 +225,7 @@ func mainErr() error {
 		go rec.Run(ctx.Done())
 	}
 
-	driver := secretsstore.NewSecretsStoreDriver(*driverName, *nodeID, *endpoint, *providerVolumePath, providerClients, mgr.GetClient(), mgr.GetAPIReader(), tokenClient)
+	driver := secretsstore.NewSecretsStoreDriver(*driverName, *nodeID, *endpoint, providerClients, mgr.GetClient(), mgr.GetAPIReader(), tokenClient)
 	driver.Run(ctx)
 
 	return nil

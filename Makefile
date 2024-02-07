@@ -29,12 +29,12 @@ E2E_PROVIDER_IMAGE_NAME ?= e2e-provider
 
 # Release version is the current supported release for the driver
 # Update this version when the helm chart is being updated for release
-RELEASE_VERSION := v1.3.4
-IMAGE_VERSION ?= v1.3.4
+RELEASE_VERSION := v1.4.0
+IMAGE_VERSION ?= v1.4.0
 
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
-override IMAGE_VERSION := v1.3.0-e2e-$(BUILD_COMMIT)
+override IMAGE_VERSION := v1.4.0-e2e-$(BUILD_COMMIT)
 endif
 
 IMAGE_TAG=$(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
@@ -64,14 +64,14 @@ ALL_OS = linux windows
 ALL_ARCH.linux = amd64 arm64
 ALL_OS_ARCH.linux = $(foreach arch, ${ALL_ARCH.linux}, linux-$(arch))
 ALL_ARCH.windows = amd64
-ALL_OSVERSIONS.windows := 1809 1903 1909 2004 ltsc2022
+ALL_OSVERSIONS.windows := 1809 ltsc2022
 ALL_OS_ARCH.windows = $(foreach arch, $(ALL_ARCH.windows), $(foreach osversion, ${ALL_OSVERSIONS.windows}, windows-${osversion}-${arch}))
 ALL_OS_ARCH = $(foreach os, $(ALL_OS), ${ALL_OS_ARCH.${os}})
 
 # The current context of image building
 # The architecture of the image
 ARCH ?= amd64
-# OS Version for the Windows images: 1809, 1903, 1909, 2004, ltsc2022
+# OS Version for the Windows images: 1809, ltsc2022
 OSVERSION ?= 1809
 # Output type of docker buildx build
 OUTPUT_TYPE ?= registry
@@ -99,11 +99,11 @@ EKSCTL := eksctl
 YQ := yq
 
 # Test variables
-KIND_VERSION ?= 0.15.0
+KIND_VERSION ?= 0.18.0
 KUBERNETES_VERSION ?= 1.24.0
 KUBECTL_VERSION ?= 1.25.3
 BATS_VERSION ?= 1.4.1
-TRIVY_VERSION ?= 0.29.1
+TRIVY_VERSION ?= 0.39.1
 PROTOC_VERSION ?= 3.20.1
 SHELLCHECK_VER ?= v0.8.0
 YQ_VERSION ?= v4.11.2
@@ -142,12 +142,12 @@ validate-go: ## Validates the installed version of go.
 ## --------------------------------------
 
 .PHONY: test
-test: lint go-test
+test: go-test
 
 .PHONY: go-test # Run unit tests
 go-test:
-	go test -count=1 -cover $(GO_FILES) -v
-	cd test/e2eprovider && go test ./... -tags e2e -count=1 -cover -v
+	go test -count=1 $(GO_FILES) -v -coverprofile cover.out
+	cd test/e2eprovider && go test ./... -tags e2e -count=1 -v
 
 # skipping Controller tests as this driver only implements Node and Identity service.
 .PHONY: sanity-test # Run CSI sanity tests for the driver
@@ -161,7 +161,7 @@ image-scan: $(TRIVY)
 	$(TRIVY) image --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
 	# show vulnerabilities that have been fixed
 	$(TRIVY) image --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(IMAGE_TAG)
-	$(TRIVY) image --vuln-type os --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
+	$(TRIVY) image --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
 
 ## --------------------------------------
 ## Tooling Binaries
@@ -173,7 +173,7 @@ $(CONTROLLER_GEN): $(TOOLS_MOD_DIR)/go.mod $(TOOLS_MOD_DIR)/go.sum $(TOOLS_MOD_D
 
 $(GOLANGCI_LINT): ## Build golangci-lint from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
+		GOPROXY=$(GOPROXY) go build -o $(TOOLS_BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
 
 $(KUSTOMIZE): ## Build kustomize from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
@@ -204,7 +204,7 @@ $(EKSCTL): ## Download and install eksctl
 	curl -sSLO  https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz && tar -zxvf eksctl_Linux_amd64.tar.gz && chmod +x eksctl && mv eksctl /usr/local/bin/
 
 $(KUBECTL): ## Install kubectl
-	curl -LO https://storage.googleapis.com/kubernetes-release/release/v$(KUBECTL_VERSION)/bin/linux/amd64/kubectl && chmod +x ./kubectl && mv kubectl /usr/local/bin/
+	curl -LO https://dl.k8s.io/release/v$(KUBECTL_VERSION)/bin/linux/amd64/kubectl && chmod +x ./kubectl && mv kubectl /usr/local/bin/
 
 $(TRIVY): ## Install trivy for image vulnerability scan
 	trivy -v | grep -q $(TRIVY_VERSION) || (curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v$(TRIVY_VERSION))
@@ -413,6 +413,7 @@ e2e-deploy-manifest:
 	kubectl apply -f manifest_staging/deploy/secrets-store.csi.x-k8s.io_secretproviderclasspodstatuses.yaml
 	kubectl apply -f manifest_staging/deploy/role-secretproviderclasses-admin.yaml
 	kubectl apply -f manifest_staging/deploy/role-secretproviderclasses-viewer.yaml
+	kubectl apply -f manifest_staging/deploy/role-secretproviderclasspodstatuses-viewer.yaml
 
 	yq e '(.spec.template.spec.containers[1].image = "$(IMAGE_TAG)") | (.spec.template.spec.containers[1].args as $$x | $$x += "--enable-secret-rotation=true" | $$x[-1] style="double") | (.spec.template.spec.containers[1].args as $$x | $$x += "--rotation-poll-interval=30s" | $$x[-1] style="double")' 'manifest_staging/deploy/secrets-store-csi-driver.yaml' | kubectl apply -f -
 
@@ -508,9 +509,11 @@ manifests: $(CONTROLLER_GEN) $(KUSTOMIZE)
 	# generate rbac-secretproviderclass
 	$(KUSTOMIZE) build config/rbac -o manifest_staging/deploy/rbac-secretproviderclass.yaml
 	cp config/rbac/role.yaml config/rbac/role_binding.yaml config/rbac/serviceaccount.yaml manifest_staging/charts/secrets-store-csi-driver/templates/
-	@sed -i '1s/^/{{ if .Values.rbac.install }}\n/gm; $$s/$$/\n{{- if .Values.rbac.pspEnabled }}\n- apiGroups:\n  - policy\n  resources:\n  - podsecuritypolicies\n  verbs:\n  - use\n  resourceNames:\n  - {{ template "sscd-psp.fullname" . }}\n{{- end }}\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role.yaml
+	@sed -i '1s/^/{{ if .Values.rbac.install }}\n/gm; $$s/$$/\n{{- if and .Values.rbac.pspEnabled \(\.Capabilities.APIVersions.Has \"policy\/v1beta1\/PodSecurityPolicy\"\) }}\n- apiGroups:\n  - policy\n  resources:\n  - podsecuritypolicies\n  verbs:\n  - use\n  resourceNames:\n  - {{ template "sscd-psp.fullname" . }}\n{{- end }}\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role.yaml
+	@sed -i '/^rules:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role.yaml
 	@sed -i '1s/^/{{ if .Values.rbac.install }}\n/gm; s/namespace: .*/namespace: {{ .Release.Namespace }}/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role_binding.yaml
-	@sed -i '1s/^/{{ if .Values.rbac.install }}\n/gm; s/namespace: .*/namespace: {{ .Release.Namespace }}/gm; $$s/$$/\n{{ include "sscd.labels" . | indent 2 }}\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/serviceaccount.yaml
+	@sed -i '/^roleRef:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role_binding.yaml
+	@sed -i '1s/^/{{ if .Values.rbac.install }}\n/gm; s/namespace: .*/namespace: {{ .Release.Namespace }}/gm; $$s/$$/\n\ \ labels:\n{{ include "sscd.labels" . | indent 4 }}\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/serviceaccount.yaml
 
 	# Generate secret syncing specific RBAC
 	$(CONTROLLER_GEN) rbac:roleName=secretprovidersyncing-role paths="./controllers/syncsecret" output:dir=config/rbac-syncsecret
@@ -518,7 +521,9 @@ manifests: $(CONTROLLER_GEN) $(KUSTOMIZE)
 	cp config/rbac-syncsecret/role.yaml manifest_staging/charts/secrets-store-csi-driver/templates/role-syncsecret.yaml
 	cp config/rbac-syncsecret/role_binding.yaml manifest_staging/charts/secrets-store-csi-driver/templates/role-syncsecret_binding.yaml
 	@sed -i '1s/^/{{ if .Values.syncSecret.enabled }}\n/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role-syncsecret.yaml
+	@sed -i '/^rules:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role-syncsecret.yaml
 	@sed -i '1s/^/{{ if .Values.syncSecret.enabled }}\n/gm; s/namespace: .*/namespace: {{ .Release.Namespace }}/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role-syncsecret_binding.yaml
+	@sed -i '/^roleRef:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role-syncsecret_binding.yaml
 
 	# Generate rotation specific RBAC
 	$(CONTROLLER_GEN) rbac:roleName=secretproviderrotation-role paths="./pkg/rotation" output:dir=config/rbac-rotation
@@ -526,7 +531,9 @@ manifests: $(CONTROLLER_GEN) $(KUSTOMIZE)
 	cp config/rbac-rotation/role.yaml manifest_staging/charts/secrets-store-csi-driver/templates/role-rotation.yaml
 	cp config/rbac-rotation/role_binding.yaml manifest_staging/charts/secrets-store-csi-driver/templates/role-rotation_binding.yaml
 	@sed -i '1s/^/{{ if .Values.enableSecretRotation }}\n/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role-rotation.yaml
+	@sed -i '/^rules:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role-rotation.yaml
 	@sed -i '1s/^/{{ if .Values.enableSecretRotation }}\n/gm; s/namespace: .*/namespace: {{ .Release.Namespace }}/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role-rotation_binding.yaml
+	@sed -i '/^roleRef:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role-rotation_binding.yaml
 
 	# Generate token requests specific RBAC
 	$(CONTROLLER_GEN) rbac:roleName=secretprovidertokenrequest-role paths="./controllers/tokenrequest" output:dir=config/rbac-tokenrequest
@@ -534,7 +541,9 @@ manifests: $(CONTROLLER_GEN) $(KUSTOMIZE)
 	cp config/rbac-tokenrequest/role.yaml manifest_staging/charts/secrets-store-csi-driver/templates/role-tokenrequest.yaml
 	cp config/rbac-tokenrequest/role_binding.yaml manifest_staging/charts/secrets-store-csi-driver/templates/role-tokenrequest_binding.yaml
 	@sed -i '1s/^/{{ if .Values.tokenRequests }}\n/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role-tokenrequest.yaml
+	@sed -i '/^rules:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role-tokenrequest.yaml
 	@sed -i '1s/^/{{ if .Values.tokenRequests }}\n/gm; s/namespace: .*/namespace: {{ .Release.Namespace }}/gm; $$s/$$/\n{{ end }}/gm' manifest_staging/charts/secrets-store-csi-driver/templates/role-tokenrequest_binding.yaml
+	@sed -i '/^roleRef:/i \ \ labels:\n{{ include \"sscd.labels\" . | indent 4 }}' manifest_staging/charts/secrets-store-csi-driver/templates/role-tokenrequest_binding.yaml
 
 .PHONY: generate-protobuf
 generate-protobuf: $(PROTOC) $(PROTOC_GEN_GO) $(PROTOC_GEN_GO_GRPC) # generates protobuf

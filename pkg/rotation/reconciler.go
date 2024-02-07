@@ -51,6 +51,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"monis.app/mlog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -66,7 +67,6 @@ const (
 // Reconciler reconciles and rotates contents in the pod
 // and Kubernetes secrets periodically
 type Reconciler struct {
-	providerVolumePath   string
 	rotationPollInterval time.Duration
 	providerClients      *secretsstore.PluginClientBuilder
 	queue                workqueue.RateLimitingInterface
@@ -80,6 +80,8 @@ type Reconciler struct {
 	// secretStore stores Secret (filtered on secrets-store.csi.k8s.io/used=true)
 	secretStore k8s.Store
 	tokenClient *k8s.TokenClient
+
+	driverName string
 }
 
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -87,9 +89,9 @@ type Reconciler struct {
 // TODO (aramase) remove this as part of https://github.com/kubernetes-sigs/secrets-store-csi-driver/issues/585
 
 // NewReconciler returns a new reconciler for rotation
-func NewReconciler(client client.Reader,
+func NewReconciler(driverName string,
+	client client.Reader,
 	s *runtime.Scheme,
-	providerVolumePath, nodeName string,
 	rotationPollInterval time.Duration,
 	providerClients *secretsstore.PluginClientBuilder,
 	tokenClient *k8s.TokenClient) (*Reconciler, error) {
@@ -107,12 +109,15 @@ func NewReconciler(client client.Reader,
 	if err != nil {
 		return nil, err
 	}
+	sr, err := newStatsReporter()
+	if err != nil {
+		return nil, err
+	}
 
 	return &Reconciler{
-		providerVolumePath:   providerVolumePath,
 		rotationPollInterval: rotationPollInterval,
 		providerClients:      providerClients,
-		reporter:             newStatsReporter(),
+		reporter:             sr,
 		queue:                workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		eventRecorder:        recorder,
 		kubeClient:           kubeClient,
@@ -121,11 +126,19 @@ func NewReconciler(client client.Reader,
 		cache:       client,
 		secretStore: secretStore,
 		tokenClient: tokenClient,
+
+		driverName: driverName,
 	}, nil
 }
 
 // Run starts the rotation reconciler
 func (r *Reconciler) Run(stopCh <-chan struct{}) {
+	if err := r.runErr(stopCh); err != nil {
+		mlog.Fatal(err)
+	}
+}
+
+func (r *Reconciler) runErr(stopCh <-chan struct{}) error {
 	defer r.queue.ShutDown()
 	klog.InfoS("starting rotation reconciler", "rotationPollInterval", r.rotationPollInterval)
 
@@ -134,7 +147,7 @@ func (r *Reconciler) Run(stopCh <-chan struct{}) {
 
 	if err := r.secretStore.Run(stopCh); err != nil {
 		klog.ErrorS(err, "failed to run informers for rotation reconciler")
-		os.Exit(1)
+		return err
 	}
 
 	// TODO (aramase) consider adding more workers to process reconcile concurrently
@@ -145,7 +158,7 @@ func (r *Reconciler) Run(stopCh <-chan struct{}) {
 	for {
 		select {
 		case <-stopCh:
-			return
+			return nil
 		case <-ticker.C:
 			// The spc pod status informer is configured to do a filtered list watch of spc pod statuses
 			// labeled for the same node as the driver. LIST will only return the filtered results.
@@ -167,6 +180,7 @@ func (r *Reconciler) Run(stopCh <-chan struct{}) {
 
 // runWorker runs a thread that process the queue
 func (r *Reconciler) runWorker() {
+	// nolint
 	for r.processNextItem() {
 
 	}
@@ -240,11 +254,11 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 
 	defer func() {
 		if err != nil {
-			r.reporter.reportRotationErrorCtMetric(providerName, errorReason, requiresUpdate)
+			r.reporter.reportRotationErrorCtMetric(ctx, providerName, errorReason, requiresUpdate)
 			return
 		}
-		r.reporter.reportRotationCtMetric(providerName, requiresUpdate)
-		r.reporter.reportRotationDuration(time.Since(begin).Seconds())
+		r.reporter.reportRotationCtMetric(ctx, providerName, requiresUpdate)
+		r.reporter.reportRotationDuration(ctx, time.Since(begin).Seconds())
 	}()
 
 	// get pod from manager's cache
@@ -286,7 +300,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	}
 
 	// determine which pod volume this is associated with
-	podVol := k8sutil.SPCVolume(pod, spc.Name)
+	podVol := k8sutil.SPCVolume(pod, r.driverName, spc.Name)
 	if podVol == nil {
 		errorReason = internalerrors.PodVolumeNotFound
 		return fmt.Errorf("could not find secret provider class pod status volume for pod %s/%s", pod.Namespace, pod.Name)
@@ -299,7 +313,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	}
 	if fileutil.GetVolumeNameFromTargetPath(spcps.Status.TargetPath) != podVol.Name {
 		errorReason = internalerrors.UnexpectedTargetPath
-		return fmt.Errorf("could not find secret provider class pod status volume for pod %s/%s", pod.Namespace, pod.Name)
+		return fmt.Errorf("secret provider class pod status(spcps) volume name does not match the volume name in the pod %s/%s", pod.Namespace, pod.Name)
 	}
 
 	parameters := make(map[string]string)

@@ -4,8 +4,9 @@
 [![Go Report Card](https://goreportcard.com/badge/kubernetes-sigs/secrets-store-csi-driver)](https://goreportcard.com/report/kubernetes-sigs/secrets-store-csi-driver)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/kubernetes-sigs/secrets-store-csi-driver)
 [![Slack](https://img.shields.io/badge/Slack-%23csi--secrets--store-blueviolet)](https://kubernetes.slack.com/archives/C013PUP2WRK)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/kubernetes-sigs/secrets-store-csi-driver/badge)](https://api.securityscorecards.dev/projects/github.com/kubernetes-sigs/secrets-store-csi-driver)
 
-Secrets Store CSI Driver for Kubernetes secrets - Integrates secrets stores with Kubernetes via a [Container Storage Interface (CSI)](https://kubernetes-csi.github.io/docs/) volume.
+Secrets Store CSI Driver for Kubernetes secrets - Integrates secrets stores with Kubernetes via a [Container Storage Interface (CSI)](https://kubernetes-csi.github.io/docs/) volume. The Secrets Store CSI Driver is a subproject of Kubernetes [SIG Auth](https://github.com/kubernetes/community/tree/master/sig-auth).
 
 The Secrets Store CSI Driver `secrets-store.csi.k8s.io` allows Kubernetes to mount multiple secrets, keys, and certs stored in enterprise-grade external secrets stores into their pods as a volume. Once the Volume is attached, the data in it is mounted into the container's file system.
 

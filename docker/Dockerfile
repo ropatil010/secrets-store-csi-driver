@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BASEIMAGE=registry.k8s.io/build-image/debian-base:bullseye-v1.4.3
+ARG BASEIMAGE=registry.k8s.io/build-image/debian-base:bookworm-v1.0.0
 
-FROM golang:1.19 as builder
+FROM golang:1.21@sha256:337543447173c2238c78d4851456760dcc57c1dfa8c3bcd94cbee8b0f7b32ad0 as builder
 WORKDIR /go/src/sigs.k8s.io/secrets-store-csi-driver
 ADD . .
 ARG TARGETARCH

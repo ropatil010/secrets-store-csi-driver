@@ -78,7 +78,7 @@ Katu6uOQ6tjRyEbx1/vXXPV7Peztr9/8daMeIAdbAoGBAOYRJ1CzMYQKjWF32Uas
 7hhQxyH1QI4nV56Dryq7l/UWun2pfwNLZFqOHD3qm05aznzNKvk9aHAsOPFfUUXO
 7sp0Ge5FLMSw1uMNnutcVcMz37KAY2fOoE2xoLM4DU/H2NqDjeGCsOsU1ReRS1vB
 J+42JGwBdLV99ruYKVKOWPh4
------END PRIVATE KEY-----	
+-----END PRIVATE KEY-----
 `
 	certPEM = `-----BEGIN CERTIFICATE-----
 MIIDOTCCAiGgAwIBAgIJAP0J5Z7N0Y5fMA0GCSqGSIb3DQEBCwUAMDMxFzAVBgNV
@@ -346,14 +346,8 @@ func TestGetSecretData(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tmpDir, err := os.MkdirTemp("", "ut")
-			if err != nil {
-				t.Fatalf("expected err to be nil, got: %+v", err)
-			}
-			defer os.RemoveAll(tmpDir)
-
 			for fileName := range test.currentFiles {
-				filePath, err := createTestFile(tmpDir, fileName)
+				filePath, err := createTestFile(t.TempDir(), fileName)
 				if err != nil {
 					t.Fatalf("expected err to be nil, got: %+v", err)
 				}
@@ -383,7 +377,7 @@ func createTestFile(tmpDir, fileName string) (string, error) {
 		if err != nil {
 			return filePath, err
 		}
-		_, err = f.Write([]byte("test"))
+		_, err = f.WriteString("test")
 		if err != nil {
 			return filePath, err
 		}

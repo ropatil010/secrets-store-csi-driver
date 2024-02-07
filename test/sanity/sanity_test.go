@@ -31,13 +31,12 @@ import (
 )
 
 const (
-	socket             = "/tmp/csi.sock"
-	endpoint           = "unix://" + socket
-	providerVolumePath = "/etc/kubernetes/secrets-store-csi-providers"
+	socket   = "/tmp/csi.sock"
+	endpoint = "unix://" + socket
 )
 
 func TestSanity(t *testing.T) {
-	driver := secretsstore.NewSecretsStoreDriver("secrets-store.csi.k8s.io", "somenodeid", endpoint, providerVolumePath, nil, nil, nil, nil)
+	driver := secretsstore.NewSecretsStoreDriver("secrets-store.csi.k8s.io", "somenodeid", endpoint, nil, nil, nil, nil)
 	go func() {
 		driver.Run(context.Background())
 	}()
@@ -49,9 +48,8 @@ func TestSanity(t *testing.T) {
 		targetPath = filepath.Join(tmpPath, targetPath)
 		return targetPath, createTargetDir(targetPath)
 	}
-	config.RemoveTargetPath = func(targetPath string) error {
-		return os.RemoveAll(targetPath)
-	}
+	config.RemoveTargetPath = os.RemoveAll
+
 	// setting idempotent count to 0 will skip the idempotent tests
 	// these tests depend on the Controller service which is not implemented in CSI driver
 	config.IdempotentCount = 0

@@ -13,11 +13,11 @@
 # limitations under the License.
 
 FROM alpine as builder
-ARG KUBE_VERSION=v1.26.0
+ARG KUBE_VERSION=v1.28.3
 ARG TARGETARCH
 
 RUN apk add --no-cache curl && \
-    curl -LO https://storage.googleapis.com/kubernetes-release/release/${KUBE_VERSION}/bin/linux/${TARGETARCH}/kubectl && \
+    curl -LO https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/${TARGETARCH}/kubectl && \
     chmod +x kubectl
 
 FROM gcr.io/distroless/static

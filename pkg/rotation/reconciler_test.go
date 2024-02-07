@@ -62,24 +62,28 @@ func setupScheme() (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
-func newTestReconciler(client client.Reader, s *runtime.Scheme, kubeClient kubernetes.Interface, crdClient *secretsStoreFakeClient.Clientset, rotationPollInterval time.Duration, socketPath string) (*Reconciler, error) {
+func newTestReconciler(client client.Reader, kubeClient kubernetes.Interface, crdClient *secretsStoreFakeClient.Clientset, rotationPollInterval time.Duration, socketPath string) (*Reconciler, error) {
 	secretStore, err := k8s.New(kubeClient, 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	sr, err := newStatsReporter()
 	if err != nil {
 		return nil, err
 	}
 
 	return &Reconciler{
-		providerVolumePath:   socketPath,
 		rotationPollInterval: rotationPollInterval,
 		providerClients:      secretsstore.NewPluginClientBuilder([]string{socketPath}),
 		queue:                workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		reporter:             newStatsReporter(),
+		reporter:             sr,
 		eventRecorder:        fakeRecorder,
 		kubeClient:           kubeClient,
 		crdClient:            crdClient,
 		cache:                client,
 		secretStore:          secretStore,
 		tokenClient:          k8s.NewTokenClient(kubeClient, "test-driver", 1*time.Second),
+		driverName:           "secrets-store.csi.k8s.io",
 	}, nil
 }
 
@@ -114,7 +118,7 @@ func TestReconcileError(t *testing.T) {
 			},
 			secretProviderClassToAdd: &secretsstorev1.SecretProviderClass{},
 			podToAdd:                 &corev1.Pod{},
-			socketPath:               getTempTestDir(t),
+			socketPath:               t.TempDir(),
 			secretToAdd:              &corev1.Secret{},
 			expectedErr:              true,
 		},
@@ -151,7 +155,7 @@ func TestReconcileError(t *testing.T) {
 				},
 			},
 			podToAdd:    &corev1.Pod{},
-			socketPath:  getTempTestDir(t),
+			socketPath:  t.TempDir(),
 			secretToAdd: &corev1.Secret{},
 			expectedErr: true,
 		},
@@ -212,7 +216,7 @@ func TestReconcileError(t *testing.T) {
 					},
 				},
 			},
-			socketPath:          getTempTestDir(t),
+			socketPath:          t.TempDir(),
 			secretToAdd:         &corev1.Secret{},
 			expectedErr:         true,
 			expectedErrorEvents: true,
@@ -277,7 +281,7 @@ func TestReconcileError(t *testing.T) {
 					},
 				},
 			},
-			socketPath: getTempTestDir(t),
+			socketPath: t.TempDir(),
 			secretToAdd: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "object1",
@@ -350,7 +354,7 @@ func TestReconcileError(t *testing.T) {
 					},
 				},
 			},
-			socketPath: getTempTestDir(t),
+			socketPath: t.TempDir(),
 			secretToAdd: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "object1",
@@ -420,7 +424,7 @@ func TestReconcileError(t *testing.T) {
 					},
 				},
 			},
-			socketPath: getTempTestDir(t),
+			socketPath: t.TempDir(),
 			secretToAdd: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "secret1",
@@ -449,7 +453,7 @@ func TestReconcileError(t *testing.T) {
 			}
 			client := controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
 
-			testReconciler, err := newTestReconciler(client, scheme, kubeClient, crdClient, test.rotationPollInterval, test.socketPath)
+			testReconciler, err := newTestReconciler(client, kubeClient, crdClient, test.rotationPollInterval, test.socketPath)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			err = testReconciler.secretStore.Run(wait.NeverStop)
@@ -573,7 +577,7 @@ func TestReconcileNoError(t *testing.T) {
 			Data: map[string][]byte{"foo": []byte("olddata")},
 		}
 
-		socketPath := getTempTestDir(t)
+		socketPath := t.TempDir()
 		expectedObjectVersions := map[string]string{"secret/object1": "v2"}
 		scheme, err := setupScheme()
 		g.Expect(err).NotTo(HaveOccurred())
@@ -590,7 +594,7 @@ func TestReconcileNoError(t *testing.T) {
 		}
 		ctrlClient := controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
 
-		testReconciler, err := newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, socketPath)
+		testReconciler, err := newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, socketPath)
 		g.Expect(err).NotTo(HaveOccurred())
 		err = testReconciler.secretStore.Run(wait.NeverStop)
 		g.Expect(err).NotTo(HaveOccurred())
@@ -635,7 +639,7 @@ func TestReconcileNoError(t *testing.T) {
 			test.nodePublishSecretRefSecretToAdd,
 		}
 		ctrlClient = controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
-		testReconciler, err = newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, socketPath)
+		testReconciler, err = newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, socketPath)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -651,7 +655,7 @@ func TestReconcileNoError(t *testing.T) {
 			test.nodePublishSecretRefSecretToAdd,
 		}
 		ctrlClient = controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
-		testReconciler, err = newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, socketPath)
+		testReconciler, err = newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, socketPath)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(err).NotTo(HaveOccurred())
 
@@ -742,7 +746,7 @@ func TestPatchSecret(t *testing.T) {
 			}
 			ctrlClient := controllerfake.NewClientBuilder().WithScheme(scheme).WithObjects(initObjects...).Build()
 
-			testReconciler, err := newTestReconciler(ctrlClient, scheme, kubeClient, crdClient, 60*time.Second, "")
+			testReconciler, err := newTestReconciler(ctrlClient, kubeClient, crdClient, 60*time.Second, "")
 			g.Expect(err).NotTo(HaveOccurred())
 			err = testReconciler.secretStore.Run(wait.NeverStop)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -767,7 +771,7 @@ func TestPatchSecret(t *testing.T) {
 func TestHandleError(t *testing.T) {
 	g := NewWithT(t)
 
-	testReconciler, err := newTestReconciler(nil, nil, nil, nil, 60*time.Second, "")
+	testReconciler, err := newTestReconciler(nil, nil, nil, 60*time.Second, "")
 	g.Expect(err).NotTo(HaveOccurred())
 
 	testReconciler.handleError(errors.New("failed error"), "key1", false)
@@ -790,17 +794,8 @@ func TestHandleError(t *testing.T) {
 	g.Expect(testReconciler.queue.Len()).To(Equal(1))
 }
 
-func getTempTestDir(t *testing.T) string {
-	tmpDir, err := os.MkdirTemp("", "ut")
-	if err != nil {
-		t.Fatalf("expected err to be nil, got: %+v", err)
-	}
-	return tmpDir
-}
-
 func getTestTargetPath(t *testing.T, uid, vol string) string {
-	dir := getTempTestDir(t)
-	path := filepath.Join(dir, "pods", uid, "volumes", "kubernetes.io~csi", vol, "mount")
+	path := filepath.Join(t.TempDir(), "pods", uid, "volumes", "kubernetes.io~csi", vol, "mount")
 	if err := os.MkdirAll(path, 0755); err != nil {
 		t.Fatalf("expected err to be nil, got: %+v", err)
 	}
