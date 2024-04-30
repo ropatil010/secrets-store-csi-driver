@@ -27,6 +27,10 @@ export ANNOTATION_VALUE=${ANNOTATION_VALUE:-"app=test"}
         --set "injector.enabled=false" \
         --set "csi.enabled=true" \
         --set "global.openshift=true" \
+        --set "injector.agentImage.repository=docker.io/hashicorp/vault" \
+        --set "server.image.repository=docker.io/hashicorp/vault" \
+        --set "csi.image.repository=docker.io/hashicorp/vault-csi-provider" \
+        --set "csi.agent.image.repository=docker.io/hashicorp/vault" \
         --set "csi.daemonSet.providersDir=/var/run/secrets-store-csi-providers"
   oc patch daemonset -n vault vault-csi-provider --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/securityContext", "value": {"privileged": true} }]'
   sleep 10 
